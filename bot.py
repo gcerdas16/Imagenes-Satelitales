@@ -36,6 +36,7 @@ TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 
 def convert_gif_to_mp4(gif_path, mp4_path):
+    """Convierte un archivo GIF a MP4 usando FFmpeg."""
     print(f"🎬 Convirtiendo {os.path.basename(gif_path)} a MP4...")
     try:
         command = [
@@ -62,6 +63,7 @@ def convert_gif_to_mp4(gif_path, mp4_path):
 
 
 def send_video_to_telegram(video_path, caption):
+    """Envía un video a un chat de Telegram."""
     print(f"🚀 Enviando video a Telegram con el caption: '{caption}'")
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         print("❌ Error: Variables de Telegram no configuradas.")
@@ -82,6 +84,7 @@ def send_video_to_telegram(video_path, caption):
 
 
 async def generate_all_videos():
+    """Función principal que orquesta todo el proceso."""
     if os.path.exists(OUTPUT_DIR):
         shutil.rmtree(OUTPUT_DIR)
     os.makedirs(OUTPUT_DIR)
@@ -94,13 +97,21 @@ async def generate_all_videos():
     )
     page = await browser.newPage()
 
-    # Navegamos una sola vez al principio
-    print(f"➡️  Navegando a {START_URL}")
-    await page.goto(START_URL, {"waitUntil": "networkidle0"})
+    # --- MEJORA: Definir un tamaño de ventana estándar ---
+    await page.setViewport({"width": 1920, "height": 1080})
 
-    # --- MEJORA: Obtenemos la imagen inicial para comparar los cambios ---
+    print(f"➡️  Navegando a {START_URL}")
+    await page.goto(START_URL, {"waitUntil": "networkidle0", "timeout": 90000})
+
     main_image_selector = 'img[name="imag"]'
-    await page.waitForSelector(main_image_selector)
+
+    # --- MEJORA: Aumentar el tiempo de espera para el primer elemento ---
+    print("⏳ Esperando a que cargue la imagen principal inicial...")
+    await page.waitForSelector(
+        main_image_selector, {"timeout": 90000}
+    )  # 90 segundos de espera
+    print("✅ Imagen principal encontrada.")
+
     last_image_src = await page.evaluate(
         f'document.querySelector("{main_image_selector}").src'
     )
@@ -116,25 +127,20 @@ async def generate_all_videos():
             await page.waitForSelector(map_link_selector)
             await page.click(map_link_selector)
 
-            # --- MEJORA: ESPERA INTELIGENTE ---
-            # Esperamos a que el 'src' de la imagen principal cambie.
-            # Esta es la señal de que el nuevo mapa ha cargado.
             print("⏳ Esperando a que el nuevo mapa cargue...")
             wait_function = f"""(selector, last_src) => {{
                 const current_src = document.querySelector(selector).src;
                 return current_src !== last_src;
             }}"""
             await page.waitForFunction(
-                wait_function, {}, main_image_selector, last_image_src
+                wait_function, {"timeout": 90000}, main_image_selector, last_image_src
             )
             print("✅ El nuevo mapa ha cargado.")
 
-            # Actualizamos la URL de la imagen para la próxima iteración
             last_image_src = await page.evaluate(
                 f'document.querySelector("{main_image_selector}").src'
             )
 
-            # Ahora que el mapa cargó, buscamos el botón de descarga
             print("⏳ Esperando el botón 'Download Loop'...")
             download_button_selector = 'input[value="Download Loop"]'
             await page.waitForSelector(download_button_selector)
@@ -165,8 +171,7 @@ async def generate_all_videos():
         except Exception as e:
             print(f"❌ Ocurrió un error procesando el mapa '{map_id}': {e}")
             print("Continuando con el siguiente mapa...")
-            # En caso de error, volvemos a la página principal para reiniciar el estado
-            await page.goto(START_URL, {"waitUntil": "networkidle0"})
+            await page.goto(START_URL, {"waitUntil": "networkidle0", "timeout": 90000})
             last_image_src = await page.evaluate(
                 f'document.querySelector("{main_image_selector}").src'
             )
