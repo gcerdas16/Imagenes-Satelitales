@@ -44,50 +44,39 @@ def setup_driver():
 def download_gif(driver):
     """Navega el sitio web, realiza los clics y descarga el GIF."""
     try:
-        # --- NAVEGACIÓN INICIAL ---
+        # --- PASO 1: Ir a la página inicial ---
         driver.get(INITIAL_URL)
         print(f"Navegando a: {INITIAL_URL}")
 
-        # --- PRIMER CLIC: 'HTML5 Loop' ---
-        # Esto navega en la MISMA ventana, no abre una nueva.
+        # --- PASO 2: Clic en 'HTML5 Loop' ---
+        # Esto navega en la misma ventana a la página del visor de imágenes.
         print("Buscando y haciendo clic en 'HTML5 Loop'...")
         WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "HTML5 Loop"))
         ).click()
-        print(
-            "Clic en 'HTML5 Loop' realizado. Ahora estamos en la página del 'looper'."
-        )
+        print("Clic en 'HTML5 Loop' realizado. Ahora en la página del visor.")
 
-        # Guardamos el identificador de la ventana actual (la del 'looper')
-        looper_window_handle = driver.current_window_handle
-
-        # --- SEGUNDO CLIC: 'Download Loop' ---
-        # Este clic SÍ abre una nueva ventana con el GIF.
-        print("Buscando y haciendo clic en el botón de descarga 'downloadLoop'...")
+        # --- PASO 3: Clic en 'Download Loop' ---
+        # Esto inicia la generación del GIF en la página actual. NO abre una nueva ventana.
+        print("Buscando y haciendo clic en 'Download Loop'...")
         WebDriverWait(driver, 30).until(
             EC.element_to_be_clickable((By.ID, "downloadLoop"))
         ).click()
-        print("Clic en 'Download Loop' realizado.")
-
-        # --- ESPERAR Y CAMBIAR A LA VENTANA DEL GIF ---
-        print("Esperando que la ventana del GIF se abra...")
-        WebDriverWait(driver, 25).until(EC.number_of_windows_to_be(2))
-
-        # Encontrar el handle de la nueva ventana (la que no es la del 'looper')
-        for window_handle in driver.window_handles:
-            if window_handle != looper_window_handle:
-                driver.switch_to.window(window_handle)
-                break
-
-        print(f"Cambiado a la ventana del GIF. Título: '{driver.title}'")
-
-        # --- DESCARGAR EL GIF (BASE64) ---
-        print("Localizando la imagen GIF (Base64)...")
-        gif_element = WebDriverWait(driver, 15).until(
-            EC.presence_of_element_located(
-                (By.XPATH, "//div[@id='animatedGifWrapper']/img")
-            )
+        print(
+            "Clic en 'Download Loop' realizado. Esperando que el GIF aparezca en la página actual..."
         )
+
+        # --- PASO 4: Esperar a que el contenedor del GIF sea visible ---
+        # Esta es la parte clave. Esperamos a que el <div> con el GIF se haga visible en la página.
+        # Le damos un timeout largo (90 segundos) porque la generación del GIF puede ser lenta.
+        gif_wrapper = WebDriverWait(driver, 90).until(
+            EC.visibility_of_element_located((By.ID, "animatedGifWrapper"))
+        )
+        print("Contenedor del GIF ('animatedGifWrapper') encontrado y visible.")
+
+        # --- PASO 5: Extraer la imagen Base64 del contenedor ---
+        print("Localizando la etiqueta <img> y extrayendo los datos Base64...")
+        gif_element = gif_wrapper.find_element(By.TAG_NAME, "img")
 
         base64_src = gif_element.get_attribute("src")
         base64_data = base64_src.split(",", 1)[1]
@@ -101,15 +90,15 @@ def download_gif(driver):
 
     except TimeoutException:
         print("\n--- ERROR: TIEMPO DE ESPERA AGOTADO ---")
-        print("El script no encontró un elemento o ventana en el tiempo asignado.")
+        print("El script no encontró un elemento en el tiempo asignado (Timeout).")
         print(f"URL al momento del error: {driver.current_url}")
-        print(f"Título de la página al momento del error: '{driver.title}'")
+        print(f"Título de la página: '{driver.title}'")
         print("Guardando captura de pantalla como 'error_screenshot.png'")
         driver.save_screenshot("error_screenshot.png")
         return False
     except Exception as e:
         print(f"\n--- ERROR INESPERADO DURANTE EL SCRAPING ---")
-        print(f"Error: {e}")
+        print(f"Error: {e.__class__.__name__} - {e}")
         print("Guardando captura de pantalla como 'error_screenshot.png'")
         driver.save_screenshot("error_screenshot.png")
         return False
