@@ -70,28 +70,28 @@ def download_gif(driver, map_info):
     gif_path = f"{map_info['output_filename']}.gif"
 
     try:
-        # --- PASO 1: Ir a la página inicial ---
         driver.get(INITIAL_URL)
         print(f"Navegando a: {INITIAL_URL}")
 
-        # --- PASO 2: Clic en el enlace del mapa específico ---
         print(f"Buscando el enlace para '{link_text_to_find}'...")
-        # Usamos XPath para encontrar el <a> que sigue al <h3> con el texto correcto
         map_link_xpath = f"//h3[text()='{link_text_to_find}']/following-sibling::a[1]"
 
-        WebDriverWait(driver, 20).until(
-            EC.element_to_be_clickable((By.XPATH, map_link_xpath))
-        ).click()
+        # --- AJUSTE CLAVE AQUÍ ---
+        # 1. Esperamos solo a que el elemento esté PRESENTE en el código, no necesariamente clickeable.
+        map_link_element = WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.XPATH, map_link_xpath))
+        )
+        # 2. Usamos JavaScript para forzar el clic. Esto evita errores de "elemento no interactuable".
+        driver.execute_script("arguments[0].click();", map_link_element)
+
         print(f"Clic en '{link_text_to_find}' realizado. Ahora en la página del visor.")
 
-        # --- PASO 3: Clic en 'Download Loop' ---
         print("Buscando y haciendo clic en 'Download Loop'...")
         WebDriverWait(driver, 30).until(
             EC.element_to_be_clickable((By.ID, "downloadLoop"))
         ).click()
         print("Clic en 'Download Loop' realizado. Esperando que el GIF aparezca...")
 
-        # --- PASO 4: Esperar por la imagen con los datos Base64 ---
         print(
             "Esperando que la imagen del GIF con datos Base64 se cargue completamente..."
         )
@@ -105,7 +105,6 @@ def download_gif(driver, map_info):
         )
         print("¡Imagen GIF con Base64 encontrada y completamente cargada!")
 
-        # --- PASO 5: Extraer y guardar ---
         base64_src = gif_element.get_attribute("src")
         base64_data = base64_src.split(",", 1)[1]
 
@@ -188,7 +187,6 @@ def cleanup_files(map_info):
                 print(f"Error eliminando archivo {file_path}: {e}")
 
 
-# --- BUCLE PRINCIPAL ---
 async def main():
     for map_data in MAPS_TO_PROCESS:
         print(f"\n{'=' * 50}")
