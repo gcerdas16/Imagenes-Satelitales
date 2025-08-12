@@ -15,23 +15,22 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# 4. Descargar, instalar y limpiar Chrome y Chromedriver de forma secuencial para ahorrar espacio
+# 4. Descargar, instalar y limpiar Chrome y Chromedriver de forma secuencial
+#    Asegurarse de que NO haya un punto y coma (;) al final de la primera línea.
 RUN LATEST_VERSIONS_URL="https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json" \
     && BROWSER_DOWNLOAD_URL=$(wget -qO- ${LATEST_VERSIONS_URL} | jq -r '.channels.Stable.downloads.chrome[?(@.platform=="linux64")].url') \
     && DRIVER_DOWNLOAD_URL=$(wget -qO- ${LATEST_VERSIONS_URL} | jq -r '.channels.Stable.downloads.chromedriver[?(@.platform=="linux64")].url') \
     \
-    # --- Proceso del Navegador (Chrome) ---
+    && echo "Descargando Chrome..." \
     && wget -q --show-progress -O chrome-linux64.zip "${BROWSER_DOWNLOAD_URL}" \
     && unzip -q chrome-linux64.zip \
     && mv chrome-linux64/* /usr/bin/ \
-    # Limpiar inmediatamente para liberar espacio
     && rm chrome-linux64.zip && rm -rf chrome-linux64 \
     \
-    # --- Proceso del Driver (Chromedriver) ---
+    && echo "Descargando Chromedriver..." \
     && wget -q --show-progress -O chromedriver-linux64.zip "${DRIVER_DOWNLOAD_URL}" \
     && unzip -q chromedriver-linux64.zip \
     && mv chromedriver-linux64/chromedriver /usr/bin/chromedriver \
-    # Limpiar inmediatamente
     && rm chromedriver-linux64.zip && rm -rf chromedriver-linux64
 
 # 5. Copiar el archivo de requerimientos e instalar las dependencias de Python
