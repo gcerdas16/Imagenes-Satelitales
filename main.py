@@ -16,14 +16,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
 
 # --- 1. CONFIGURACIÓN ---
-# Cargar variables de entorno desde un archivo .env (para desarrollo local)
-# En Railway, estas variables se configuran en el panel del proyecto.
 load_dotenv()
-
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-# URLs y rutas de archivos
 INITIAL_URL = (
     "https://rammb.cira.colostate.edu/ramsdis/online/rmtc.asp#Central_and_South_America"
 )
@@ -38,10 +33,10 @@ def setup_driver():
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument("window-size=1280x800")
+    options.add_argument(
+        "window-size=1280x1024"
+    )  # Aumentado un poco el tamaño vertical
 
-    # Esta línea es clave. Al crear el servicio sin argumentos,
-    # Selenium 4 busca automáticamente el chromedriver en las rutas del sistema.
     service = ChromeService()
     driver = webdriver.Chrome(service=service, options=options)
     print("WebDriver configurado exitosamente.")
@@ -53,11 +48,8 @@ def download_gif(driver):
     try:
         driver.get(INITIAL_URL)
         print(f"Navegando a: {INITIAL_URL}")
-
-        # Guardar la ventana principal
         original_window = driver.current_window_handle
 
-        # --- Clic en "HTML5 Loop" ---
         print("Buscando el enlace 'HTML5 Loop'...")
         html5_loop_link = WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "HTML5 Loop"))
@@ -65,48 +57,52 @@ def download_gif(driver):
         html5_loop_link.click()
         print("Clic en 'HTML5 Loop' realizado.")
 
-        # Esperar a que la nueva pestaña se abra y cambiar a ella
-        WebDriverWait(driver, 10).until(EC.number_of_windows_to_be(2))
+        # --- ESPERAR Y CAMBIAR A LA NUEVA PESTAÑA (Lógica mejorada) ---
+        print("Esperando que la nueva pestaña (ventana 2) se abra...")
+        WebDriverWait(driver, 25).until(
+            EC.number_of_windows_to_be(2)
+        )  # AUMENTADO A 25 SEGUNDOS
+
         for window_handle in driver.window_handles:
             if window_handle != original_window:
                 driver.switch_to.window(window_handle)
                 break
 
-        print(f"Cambiado a la nueva pestaña: {driver.title}")
+        print(f"Cambiado a la nueva pestaña. Título: '{driver.title}'")
 
-        # --- Clic en "Download Loop" ---
-        print("Buscando el botón de descarga...")
-        download_button = WebDriverWait(driver, 20).until(
+        # --- CLIC EN "Download Loop" (Lógica mejorada) ---
+        print("Buscando el botón de descarga 'downloadLoop'...")
+        download_button = WebDriverWait(driver, 30).until(  # AUMENTADO A 30 SEGUNDOS
             EC.element_to_be_clickable((By.ID, "downloadLoop"))
         )
         download_button.click()
         print("Clic en el botón de descarga realizado.")
 
-        # Esperar 15 segundos para que la nueva ventana con el GIF se genere y abra
+        # --- ESPERAR TERCERA VENTANA (Lógica mejorada) ---
         print("Esperando 15 segundos para la generación del GIF...")
         time.sleep(15)
 
-        # Esperar a que la tercera ventana (la del GIF) se abra y cambiar a ella
-        WebDriverWait(driver, 20).until(EC.number_of_windows_to_be(3))
+        print("Esperando que la ventana del GIF (ventana 3) aparezca...")
+        WebDriverWait(driver, 25).until(
+            EC.number_of_windows_to_be(3)
+        )  # AUMENTADO A 25 SEGUNDOS
+
+        # Encontrar el handle de la ventana del GIF
+        main_windows = {original_window, driver.current_window_handle}
         gif_window_handle = [
-            wh
-            for wh in driver.window_handles
-            if wh not in [original_window, driver.current_window_handle]
+            wh for wh in driver.window_handles if wh not in main_windows
         ][0]
         driver.switch_to.window(gif_window_handle)
-        print(f"Cambiado a la ventana del GIF: {driver.title}")
+        print(f"Cambiado a la ventana del GIF. Título: '{driver.title}'")
 
-        # --- Descargar el GIF desde la etiqueta <img> con datos Base64 ---
         print("Localizando la imagen GIF (Base64)...")
-        gif_element = WebDriverWait(driver, 10).until(
+        gif_element = WebDriverWait(driver, 15).until(  # AUMENTADO A 15 SEGUNDOS
             EC.presence_of_element_located(
                 (By.XPATH, "//div[@id='animatedGifWrapper']/img")
             )
         )
 
         base64_src = gif_element.get_attribute("src")
-        # El string es "data:image/gif;base64,R0lGODlhgALgAQA..."
-        # Necesitamos remover el prefijo para obtener solo los datos base64
         base64_data = base64_src.split(",", 1)[1]
 
         print("Decodificando y guardando el archivo GIF...")
@@ -116,14 +112,24 @@ def download_gif(driver):
         print(f"GIF guardado exitosamente en: {GIF_PATH}")
         return True
 
-    except (TimeoutException, NoSuchElementException) as e:
-        print(f"Error durante el scraping: {e}")
-        # Tomar una captura de pantalla para depuración
+    except TimeoutException:
+        print("\n--- ERROR: TIEMPO DE ESPERA AGOTADO ---")
+        print("El script no encontró un elemento o ventana en el tiempo asignado.")
+        print(f"URL al momento del error: {driver.current_url}")
+        print(f"Título de la página al momento del error: '{driver.title}'")
+        print("Guardando captura de pantalla como 'error_screenshot.png'")
+        driver.save_screenshot("error_screenshot.png")
+        return False
+    except Exception as e:
+        print(f"\n--- ERROR INESPERADO DURANTE EL SCRAPING ---")
+        print(f"Error: {e}")
+        print("Guardando captura de pantalla como 'error_screenshot.png'")
         driver.save_screenshot("error_screenshot.png")
         return False
     finally:
-        driver.quit()
-        print("WebDriver cerrado.")
+        if driver:
+            driver.quit()
+            print("WebDriver cerrado.")
 
 
 def convert_gif_to_mp4():
@@ -131,7 +137,6 @@ def convert_gif_to_mp4():
     try:
         print(f"Iniciando conversión de {GIF_PATH} a {VIDEO_PATH}...")
         with imageio.get_reader(GIF_PATH) as reader:
-            # Usar FFMPEG que es bueno para compatibilidad
             with imageio.get_writer(
                 VIDEO_PATH, format="FFMPEG", mode="I", fps=10, codec="libx264"
             ) as writer:
@@ -149,7 +154,6 @@ async def send_video_telegram():
     if not all([TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID]):
         print("Error: Las variables de entorno de Telegram no están configuradas.")
         return
-
     try:
         print("Preparando para enviar video por Telegram...")
         bot = telegram.Bot(token=TELEGRAM_BOT_TOKEN)
@@ -157,7 +161,7 @@ async def send_video_telegram():
             await bot.send_video(
                 chat_id=TELEGRAM_CHAT_ID,
                 video=open(VIDEO_PATH, "rb"),
-                caption="Aquí está el video más reciente del satélite GOES-East - GeoColor.",
+                caption="Aquí está el video más reciente del satélite GOES-East.",
                 connect_timeout=30,
                 read_timeout=30,
             )
@@ -171,20 +175,24 @@ def cleanup_files():
     print("Limpiando archivos locales...")
     for file_path in [GIF_PATH, VIDEO_PATH, "error_screenshot.png"]:
         if os.path.exists(file_path):
-            os.remove(file_path)
-            print(f"Archivo eliminado: {file_path}")
+            try:
+                os.remove(file_path)
+                print(f"Archivo eliminado: {file_path}")
+            except OSError as e:
+                print(f"Error eliminando archivo {file_path}: {e}")
 
 
 # --- FUNCIÓN PRINCIPAL ---
 if __name__ == "__main__":
     import asyncio
 
-    cleanup_files()  # Limpiar archivos de una ejecución anterior
+    cleanup_files()
 
-    driver = setup_driver()
-    if download_gif(driver):
-        if convert_gif_to_mp4():
-            asyncio.run(send_video_telegram())
+    driver_instance = setup_driver()
+    if driver_instance:
+        if download_gif(driver_instance):
+            if convert_gif_to_mp4():
+                asyncio.run(send_video_telegram())
 
-    cleanup_files()  # Limpiar al final
+    cleanup_files()
     print("Proceso finalizado.")
