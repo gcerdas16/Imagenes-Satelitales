@@ -23,7 +23,7 @@ MAPS_TO_PROCESS = [
         "caption": "🛰️ Animación Satelital (Canal Visible) - Costa Rica",
     },
     {
-        "id": "rmtc/rmtccosir2",  # Corregido de rmtccosvis2 a rmtccosir2 para Infrarrojo
+        "id": "rmtc/rmtccosir2",
         "caption": "🛰️ Animación Satelital (Canal Infrarrojo) - Costa Rica",
     },
     {
@@ -57,10 +57,9 @@ def convert_gif_to_mp4(gif_path, mp4_path):
             "yuv420p",
             "-vf",
             "scale=trunc(iw/2)*2:trunc(ih/2)*2",
-            "-y",  # Sobrescribir el archivo de salida si existe
+            "-y",
             mp4_path,
         ]
-        # Usamos DEVNULL para ocultar la salida detallada de ffmpeg
         subprocess.run(
             command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
@@ -94,7 +93,7 @@ def send_video_to_telegram(video_path, caption):
             data = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
 
             response = requests.post(url, files=files, data=data, timeout=60)
-            response.raise_for_status()  # Lanza un error para respuestas 4xx/5xx
+            response.raise_for_status()
 
             if response.json().get("ok"):
                 print("✅ ¡Video enviado a Telegram con éxito!")
@@ -110,67 +109,52 @@ async def generate_all_videos():
     """
     Función principal que orquesta todo el proceso.
     """
-    # 1. Preparación Inicial: Limpiar carpeta de salida
     if os.path.exists(OUTPUT_DIR):
         shutil.rmtree(OUTPUT_DIR)
     os.makedirs(OUTPUT_DIR)
 
-    # Verificar que FFmpeg exista antes de iniciar el navegador
     if not shutil.which("ffmpeg"):
         print(
             "🚨 ALERTA: El comando 'ffmpeg' no fue encontrado. La conversión de video fallará."
         )
-        print(
-            "Asegúrate de que FFmpeg esté instalado en tu entorno de Railway (revisa nixpacks.toml)."
-        )
-        # El script puede continuar para descargar los GIFs, pero la conversión y envío fallarán.
 
-    # Iniciar el navegador Pyppeteer
     print("🖥️  Iniciando navegador Chromium...")
-    # Opciones para Railway: headless y no-sandbox son cruciales
     browser = await launch(
-        headless=True, args=["--no-sandbox", "--disable-setuid-sandbox"]
+        headless=True,
+        executablePath="/usr/bin/chromium",  # <-- ESTA ES LA LÍNEA CLAVE
+        args=["--no-sandbox", "--disable-setuid-sandbox"],
     )
     page = await browser.newPage()
 
-    # 2. Bucle para procesar cada mapa
     for map_info in MAPS_TO_PROCESS:
         map_id = map_info["id"]
         map_caption = map_info["caption"]
         print(f"\n--- 🗺️  Procesando mapa: {map_id} ---")
 
         try:
-            # Navegación a la página principal
             print(f"➡️  Navegando a {START_URL}")
             await page.goto(START_URL, {"waitUntil": "networkidle0"})
 
-            # Selección del mapa
             print(f"🖱️  Haciendo clic en el enlace del mapa '{map_id}'")
             map_link_selector = f"a[href*='{map_id}']"
             await page.waitForSelector(map_link_selector)
             await page.click(map_link_selector)
 
-            # Espera y descarga del GIF
             print("⏳ Esperando el botón 'Download Loop'...")
             download_button_selector = 'input[value="Download Loop"]'
             await page.waitForSelector(download_button_selector)
             await page.click(download_button_selector)
             print("🖱️  Clic en 'Download Loop'. Generando animación...")
 
-            # Espera activa hasta que el GIF (como Data URL) se cargue en la página
             gif_image_selector = 'img[src^="data:image/gif;base64,"]'
             print("⏳ Esperando que el GIF sea generado por el servidor...")
-            await page.waitForSelector(
-                gif_image_selector, {"timeout": 120000}
-            )  # Timeout de 2 minutos
+            await page.waitForSelector(gif_image_selector, {"timeout": 120000})
 
-            # Extraer el código Base64 del GIF
             gif_base64_data = await page.evaluate(
                 f'() => document.querySelector("{gif_image_selector}").src'
             )
             print("📥 GIF generado y encontrado en la página.")
 
-            # Decodificar y guardar el archivo .gif
             header, encoded = gif_base64_data.split(",", 1)
             gif_data = base64.b64decode(encoded)
             gif_filename = f"{map_id.replace('/', '_')}.gif"
@@ -179,18 +163,15 @@ async def generate_all_videos():
                 f.write(gif_data)
             print(f"💾 GIF guardado como: {gif_path}")
 
-            # Conversión a MP4
             mp4_path = gif_path.replace(".gif", ".mp4")
             if convert_gif_to_mp4(gif_path, mp4_path):
-                # Envío a Telegram
                 send_video_to_telegram(mp4_path, map_caption)
 
         except Exception as e:
             print(f"❌ Ocurrió un error procesando el mapa '{map_id}': {e}")
             print("Continuando con el siguiente mapa...")
-            continue  # Pasa al siguiente mapa en la lista
+            continue
 
-    # 3. Finalización
     print("\n--- ✅ Proceso completado para todos los mapas ---")
     await browser.close()
     print("🖥️  Navegador cerrado.")
