@@ -5,6 +5,7 @@ import asyncio
 import subprocess
 import requests
 from pyppeteer import launch
+from pyppeteer.errors import TimeoutError
 
 # --- CONFIGURACIÓN PRINCIPAL ---
 START_URL = (
@@ -35,8 +36,8 @@ TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 
+# --- FUNCIONES AUXILIARES (SIN CAMBIOS) ---
 def convert_gif_to_mp4(gif_path, mp4_path):
-    """Convierte un archivo GIF a MP4 usando FFmpeg."""
     print(f"🎬 Convirtiendo {os.path.basename(gif_path)} a MP4...")
     try:
         command = [
@@ -63,11 +64,7 @@ def convert_gif_to_mp4(gif_path, mp4_path):
 
 
 def send_video_to_telegram(video_path, caption):
-    """Envía un video a un chat de Telegram."""
     print(f"🚀 Enviando video a Telegram con el caption: '{caption}'")
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print("❌ Error: Variables de Telegram no configuradas.")
-        return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendVideo"
     try:
         with open(video_path, "rb") as video_file:
@@ -97,20 +94,32 @@ async def generate_all_videos():
     )
     page = await browser.newPage()
 
-    # --- MEJORA: Definir un tamaño de ventana estándar ---
+    # --- MEJORA 1: CAMUFLAJE (USER-AGENT DE UN NAVEGADOR REAL) ---
+    await page.setUserAgent(
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+    )
     await page.setViewport({"width": 1920, "height": 1080})
 
     print(f"➡️  Navegando a {START_URL}")
-    await page.goto(START_URL, {"waitUntil": "networkidle0", "timeout": 90000})
+    await page.goto(START_URL, {"waitUntil": "networkidle0", "timeout": 60000})
 
     main_image_selector = 'img[name="imag"]'
 
-    # --- MEJORA: Aumentar el tiempo de espera para el primer elemento ---
-    print("⏳ Esperando a que cargue la imagen principal inicial...")
-    await page.waitForSelector(
-        main_image_selector, {"timeout": 90000}
-    )  # 90 segundos de espera
-    print("✅ Imagen principal encontrada.")
+    # --- MEJORA 2: BLOQUE DE DIAGNÓSTICO (CAJA NEGRA) ---
+    try:
+        print("⏳ Esperando a que cargue la imagen principal inicial...")
+        await page.waitForSelector(main_image_selector, {"timeout": 60000})
+        print("✅ Imagen principal encontrada.")
+    except TimeoutError:
+        print("❌ ERROR DE TIMEOUT: No se pudo encontrar la imagen principal.")
+        print("--- INICIANDO DEBUG ---")
+        html_content = await page.content()
+        print("CONTENIDO HTML DE LA PÁGINA FALLIDA:")
+        print(html_content)
+        print("--- FIN DE DEBUG ---")
+        print("El bot no puede continuar y se cerrará.")
+        await browser.close()
+        return  # Salir de la función si falla
 
     last_image_src = await page.evaluate(
         f'document.querySelector("{main_image_selector}").src'
@@ -133,10 +142,9 @@ async def generate_all_videos():
                 return current_src !== last_src;
             }}"""
             await page.waitForFunction(
-                wait_function, {"timeout": 90000}, main_image_selector, last_image_src
+                wait_function, {"timeout": 60000}, main_image_selector, last_image_src
             )
             print("✅ El nuevo mapa ha cargado.")
-
             last_image_src = await page.evaluate(
                 f'document.querySelector("{main_image_selector}").src'
             )
@@ -171,7 +179,7 @@ async def generate_all_videos():
         except Exception as e:
             print(f"❌ Ocurrió un error procesando el mapa '{map_id}': {e}")
             print("Continuando con el siguiente mapa...")
-            await page.goto(START_URL, {"waitUntil": "networkidle0", "timeout": 90000})
+            await page.goto(START_URL, {"waitUntil": "networkidle0", "timeout": 60000})
             last_image_src = await page.evaluate(
                 f'document.querySelector("{main_image_selector}").src'
             )
