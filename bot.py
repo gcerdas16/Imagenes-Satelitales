@@ -9,7 +9,7 @@ from pyppeteer.errors import TimeoutError
 
 # --- CONFIGURACIÓN PRINCIPAL ---
 START_URL = (
-    "https://rammb.cira.colostate.edu/ramsdis/online/rmtc.asp#Central_and_South_America"
+    "https://rammb.cira.colostate.edu/ramsdis/online/rmtc.asp"  # URL base sin ancla
 )
 OUTPUT_DIR = "gif_animado_final"
 MAPS_TO_PROCESS = [
@@ -56,32 +56,26 @@ def convert_gif_to_mp4(gif_path, mp4_path):
         subprocess.run(
             command, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
         )
-        print("✅ Conversión a MP4 exitosa.")
         return True
-    except (FileNotFoundError, subprocess.CalledProcessError) as e:
-        print(f"❌ Error durante la conversión con FFmpeg: {e}")
+    except (FileNotFoundError, subprocess.CalledProcessError):
         return False
 
 
 def send_video_to_telegram(video_path, caption):
-    print(f"🚀 Enviando video a Telegram con el caption: '{caption}'")
+    print(f"🚀 Enviando video a Telegram: '{caption}'")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendVideo"
     try:
         with open(video_path, "rb") as video_file:
             files = {"video": (os.path.basename(video_path), video_file)}
             data = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
-            response = requests.post(url, files=files, data=data, timeout=120)
-            response.raise_for_status()
-            if response.json().get("ok"):
-                print("✅ ¡Video enviado a Telegram con éxito!")
-            else:
-                print(f"❌ Error en la respuesta de Telegram: {response.text}")
+            requests.post(url, files=files, data=data, timeout=120).raise_for_status()
+            print("✅ ¡Video enviado con éxito!")
     except requests.exceptions.RequestException as e:
         print(f"❌ Error al enviar la petición a Telegram: {e}")
 
 
 async def generate_all_videos():
-    """Función principal que orquesta todo el proceso."""
+    """Función principal con la nueva estrategia."""
     if os.path.exists(OUTPUT_DIR):
         shutil.rmtree(OUTPUT_DIR)
     os.makedirs(OUTPUT_DIR)
@@ -93,37 +87,13 @@ async def generate_all_videos():
         args=["--no-sandbox", "--disable-setuid-sandbox"],
     )
     page = await browser.newPage()
-
-    # --- MEJORA 1: CAMUFLAJE (USER-AGENT DE UN NAVEGADOR REAL) ---
-    await page.setUserAgent(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
-    )
     await page.setViewport({"width": 1920, "height": 1080})
 
-    print(f"➡️  Navegando a {START_URL}")
-    await page.goto(START_URL, {"waitUntil": "networkidle0", "timeout": 60000})
-
-    main_image_selector = 'img[name="imag"]'
-
-    # --- MEJORA 2: BLOQUE DE DIAGNÓSTICO (CAJA NEGRA) ---
-    try:
-        print("⏳ Esperando a que cargue la imagen principal inicial...")
-        await page.waitForSelector(main_image_selector, {"timeout": 60000})
-        print("✅ Imagen principal encontrada.")
-    except TimeoutError:
-        print("❌ ERROR DE TIMEOUT: No se pudo encontrar la imagen principal.")
-        print("--- INICIANDO DEBUG ---")
-        html_content = await page.content()
-        print("CONTENIDO HTML DE LA PÁGINA FALLIDA:")
-        print(html_content)
-        print("--- FIN DE DEBUG ---")
-        print("El bot no puede continuar y se cerrará.")
-        await browser.close()
-        return  # Salir de la función si falla
-
-    last_image_src = await page.evaluate(
-        f'document.querySelector("{main_image_selector}").src'
+    # --- NUEVA ESTRATEGIA ---
+    print(
+        f"➡️  Navegando a la página principal para obtener los enlaces directos: {START_URL}"
     )
+    await page.goto(START_URL, {"waitUntil": "networkidle0", "timeout": 60000})
 
     for map_info in MAPS_TO_PROCESS:
         map_id = map_info["id"]
@@ -131,27 +101,35 @@ async def generate_all_videos():
         print(f"\n--- 🗺️  Procesando mapa: {map_id} ---")
 
         try:
-            print(f"🖱️  Haciendo clic en el enlace del mapa '{map_id}'")
-            map_link_selector = f"a[href*='{map_id}']"
-            await page.waitForSelector(map_link_selector)
-            await page.click(map_link_selector)
+            # 1. Encontrar el enlace directo a la página de animación ("HTML5 Loop")
+            print("🔎 Buscando el enlace directo a la animación...")
+            # Usamos XPath para encontrar el 'a' que contiene el 'map_id' en su href Y cuyo texto es "HTML5 Loop"
+            # Esta es una forma muy robusta de seleccionar el elemento correcto
+            xpath_selector = f'//a[contains(@href, "{map_id}") and normalize-space(text())="HTML5 Loop"]'
+            link_element_list = await page.xpath(xpath_selector)
 
-            print("⏳ Esperando a que el nuevo mapa cargue...")
-            wait_function = f"""(selector, last_src) => {{
-                const current_src = document.querySelector(selector).src;
-                return current_src !== last_src;
-            }}"""
-            await page.waitForFunction(
-                wait_function, {"timeout": 60000}, main_image_selector, last_image_src
+            if not link_element_list:
+                print(
+                    f"❌ No se pudo encontrar el enlace 'HTML5 Loop' para el mapa {map_id}. Saltando..."
+                )
+                continue
+
+            link_element = link_element_list[0]
+            loop_page_url = await page.evaluate(
+                "(element) => element.href", link_element
             )
-            print("✅ El nuevo mapa ha cargado.")
-            last_image_src = await page.evaluate(
-                f'document.querySelector("{main_image_selector}").src'
+            print(f"✅ Enlace encontrado: {loop_page_url}")
+
+            # 2. Navegar directamente a la página de animación
+            print(f"➡️  Navegando a la página de animación...")
+            await page.goto(
+                loop_page_url, {"waitUntil": "networkidle0", "timeout": 60000}
             )
 
+            # 3. Ejecutar la lógica de descarga en esta página
             print("⏳ Esperando el botón 'Download Loop'...")
             download_button_selector = 'input[value="Download Loop"]'
-            await page.waitForSelector(download_button_selector)
+            await page.waitForSelector(download_button_selector, {"timeout": 60000})
             await page.click(download_button_selector)
             print("🖱️  Clic en 'Download Loop'. Generando animación...")
 
@@ -179,10 +157,8 @@ async def generate_all_videos():
         except Exception as e:
             print(f"❌ Ocurrió un error procesando el mapa '{map_id}': {e}")
             print("Continuando con el siguiente mapa...")
-            await page.goto(START_URL, {"waitUntil": "networkidle0", "timeout": 60000})
-            last_image_src = await page.evaluate(
-                f'document.querySelector("{main_image_selector}").src'
-            )
+            # Volver a la página principal para reiniciar el estado para el siguiente mapa del bucle
+            await page.goto(START_URL, {"waitUntil": "networkidle0"})
             continue
 
     print("\n--- ✅ Proceso completado para todos los mapas ---")
@@ -192,8 +168,6 @@ async def generate_all_videos():
 
 if __name__ == "__main__":
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print(
-            "🚨 ERROR CRÍTICO: Las variables de entorno TELEGRAM_TOKEN y TELEGRAM_CHAT_ID deben estar definidas."
-        )
+        print("🚨 ERROR CRÍTICO: Variables de entorno de Telegram no definidas.")
     else:
         asyncio.get_event_loop().run_until_complete(generate_all_videos())
