@@ -1,11 +1,9 @@
 # Archivo: nixpacks.toml
-# Le indica a Railway que instale paquetes adicionales del sistema.
 
 [phases.setup]
-# 'aptPkgs' es la lista de paquetes de sistema que se instalarán.
-# Aquí le pedimos que instale 'ffmpeg'.
-aptPkgs = ["ffmpeg"]
+# Instala FFmpeg y el navegador Chromium usando el gestor de paquetes Apt.
+aptPkgs = ["ffmpeg", "chromium"]
 
 [start]
-# Comando para iniciar tu aplicación una vez construido el entorno.
+# Comando para iniciar tu aplicación.
 cmd = "python bot.py"
