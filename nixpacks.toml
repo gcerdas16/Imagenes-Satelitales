@@ -1,9 +1,0 @@
-# Archivo: nixpacks.toml
-
-[phases.setup]
-# Instala FFmpeg y el navegador Chromium usando el gestor de paquetes Apt.
-aptPkgs = ["ffmpeg", "chromium"]
-
-[start]
-# Comando para iniciar tu aplicación.
-cmd = "python bot.py"
