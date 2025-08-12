@@ -1,2 +1,5 @@
-pyppeteer
-requests
+# requirements.txt
+python-telegram-bot[job-queue]
+python-dotenv
+selenium
+imageio[ffmpeg]

@@ -1,0 +1,7 @@
+# .gitignore
+__pycache__/
+*.pyc
+.env
+downloaded_loop.gif
+final_video.mp4
+error_screenshot.png
