@@ -27,15 +27,13 @@ VIDEO_PATH = "final_video.mp4"
 
 
 def setup_driver():
-    """Configura el driver de Selenium para que encuentre el chromedriver automáticamente."""
+    """Configura el driver de Selenium."""
     options = webdriver.ChromeOptions()
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
-    options.add_argument(
-        "window-size=1280x1024"
-    )  # Aumentado un poco el tamaño vertical
+    options.add_argument("window-size=1280x1024")
 
     service = ChromeService()
     driver = webdriver.Chrome(service=service, options=options)
@@ -46,57 +44,46 @@ def setup_driver():
 def download_gif(driver):
     """Navega el sitio web, realiza los clics y descarga el GIF."""
     try:
+        # --- NAVEGACIÓN INICIAL ---
         driver.get(INITIAL_URL)
         print(f"Navegando a: {INITIAL_URL}")
-        original_window = driver.current_window_handle
 
-        print("Buscando el enlace 'HTML5 Loop'...")
-        html5_loop_link = WebDriverWait(driver, 20).until(
+        # --- PRIMER CLIC: 'HTML5 Loop' ---
+        # Esto navega en la MISMA ventana, no abre una nueva.
+        print("Buscando y haciendo clic en 'HTML5 Loop'...")
+        WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "HTML5 Loop"))
+        ).click()
+        print(
+            "Clic en 'HTML5 Loop' realizado. Ahora estamos en la página del 'looper'."
         )
-        html5_loop_link.click()
-        print("Clic en 'HTML5 Loop' realizado.")
 
-        # --- ESPERAR Y CAMBIAR A LA NUEVA PESTAÑA (Lógica mejorada) ---
-        print("Esperando que la nueva pestaña (ventana 2) se abra...")
-        WebDriverWait(driver, 25).until(
-            EC.number_of_windows_to_be(2)
-        )  # AUMENTADO A 25 SEGUNDOS
+        # Guardamos el identificador de la ventana actual (la del 'looper')
+        looper_window_handle = driver.current_window_handle
 
+        # --- SEGUNDO CLIC: 'Download Loop' ---
+        # Este clic SÍ abre una nueva ventana con el GIF.
+        print("Buscando y haciendo clic en el botón de descarga 'downloadLoop'...")
+        WebDriverWait(driver, 30).until(
+            EC.element_to_be_clickable((By.ID, "downloadLoop"))
+        ).click()
+        print("Clic en 'Download Loop' realizado.")
+
+        # --- ESPERAR Y CAMBIAR A LA VENTANA DEL GIF ---
+        print("Esperando que la ventana del GIF se abra...")
+        WebDriverWait(driver, 25).until(EC.number_of_windows_to_be(2))
+
+        # Encontrar el handle de la nueva ventana (la que no es la del 'looper')
         for window_handle in driver.window_handles:
-            if window_handle != original_window:
+            if window_handle != looper_window_handle:
                 driver.switch_to.window(window_handle)
                 break
 
-        print(f"Cambiado a la nueva pestaña. Título: '{driver.title}'")
-
-        # --- CLIC EN "Download Loop" (Lógica mejorada) ---
-        print("Buscando el botón de descarga 'downloadLoop'...")
-        download_button = WebDriverWait(driver, 30).until(  # AUMENTADO A 30 SEGUNDOS
-            EC.element_to_be_clickable((By.ID, "downloadLoop"))
-        )
-        download_button.click()
-        print("Clic en el botón de descarga realizado.")
-
-        # --- ESPERAR TERCERA VENTANA (Lógica mejorada) ---
-        print("Esperando 15 segundos para la generación del GIF...")
-        time.sleep(15)
-
-        print("Esperando que la ventana del GIF (ventana 3) aparezca...")
-        WebDriverWait(driver, 25).until(
-            EC.number_of_windows_to_be(3)
-        )  # AUMENTADO A 25 SEGUNDOS
-
-        # Encontrar el handle de la ventana del GIF
-        main_windows = {original_window, driver.current_window_handle}
-        gif_window_handle = [
-            wh for wh in driver.window_handles if wh not in main_windows
-        ][0]
-        driver.switch_to.window(gif_window_handle)
         print(f"Cambiado a la ventana del GIF. Título: '{driver.title}'")
 
+        # --- DESCARGAR EL GIF (BASE64) ---
         print("Localizando la imagen GIF (Base64)...")
-        gif_element = WebDriverWait(driver, 15).until(  # AUMENTADO A 15 SEGUNDOS
+        gif_element = WebDriverWait(driver, 15).until(
             EC.presence_of_element_located(
                 (By.XPATH, "//div[@id='animatedGifWrapper']/img")
             )
