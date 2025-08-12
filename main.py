@@ -32,17 +32,16 @@ VIDEO_PATH = "final_video.mp4"
 
 
 def setup_driver():
-    """Configura el driver de Selenium para ejecutarse en modo headless en un contenedor."""
+    """Configura el driver de Selenium para que encuentre el chromedriver automáticamente."""
     options = webdriver.ChromeOptions()
-    # Opciones clave para correr en Railway/Docker
     options.add_argument("--headless")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("window-size=1280x800")
 
-    # Railway/Docker usualmente provee chromedriver en /usr/bin/chromedriver
-    # Si no, se necesita especificar la ruta con ChromeService
+    # Esta línea es clave. Al crear el servicio sin argumentos,
+    # Selenium 4 busca automáticamente el chromedriver en las rutas del sistema.
     service = ChromeService()
     driver = webdriver.Chrome(service=service, options=options)
     print("WebDriver configurado exitosamente.")
