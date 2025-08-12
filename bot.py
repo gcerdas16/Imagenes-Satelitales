@@ -7,16 +7,10 @@ import requests
 from pyppeteer import launch
 
 # --- CONFIGURACIÓN PRINCIPAL ---
-
-# URL de inicio para la navegación
 START_URL = (
     "https://rammb.cira.colostate.edu/ramsdis/online/rmtc.asp#Central_and_South_America"
 )
-
-# Directorio para guardar los archivos generados
 OUTPUT_DIR = "gif_animado_final"
-
-# Lista de mapas a procesar
 MAPS_TO_PROCESS = [
     {
         "id": "rmtc/rmtccosvis1",
@@ -36,15 +30,12 @@ MAPS_TO_PROCESS = [
     },
 ]
 
-# --- CREDENCIALES DE TELEGRAM (LEÍDAS DESDE EL ENTORNO) ---
+# --- CREDENCIALES DE TELEGRAM ---
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 
 def convert_gif_to_mp4(gif_path, mp4_path):
-    """
-    Convierte un archivo GIF a MP4 usando FFmpeg.
-    """
     print(f"🎬 Convirtiendo {os.path.basename(gif_path)} a MP4...")
     try:
         command = [
@@ -65,66 +56,54 @@ def convert_gif_to_mp4(gif_path, mp4_path):
         )
         print("✅ Conversión a MP4 exitosa.")
         return True
-    except FileNotFoundError:
-        print(
-            "❌ Error: FFmpeg no está instalado o no se encuentra en el PATH del sistema."
-        )
-        return False
-    except subprocess.CalledProcessError as e:
+    except (FileNotFoundError, subprocess.CalledProcessError) as e:
         print(f"❌ Error durante la conversión con FFmpeg: {e}")
         return False
 
 
 def send_video_to_telegram(video_path, caption):
-    """
-    Envía un video a un chat de Telegram.
-    """
     print(f"🚀 Enviando video a Telegram con el caption: '{caption}'")
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        print(
-            "❌ Error: Las variables TELEGRAM_TOKEN y TELEGRAM_CHAT_ID no están configuradas."
-        )
+        print("❌ Error: Variables de Telegram no configuradas.")
         return
-
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendVideo"
     try:
         with open(video_path, "rb") as video_file:
             files = {"video": (os.path.basename(video_path), video_file)}
             data = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption}
-
-            response = requests.post(url, files=files, data=data, timeout=60)
+            response = requests.post(url, files=files, data=data, timeout=120)
             response.raise_for_status()
-
             if response.json().get("ok"):
                 print("✅ ¡Video enviado a Telegram con éxito!")
             else:
                 print(f"❌ Error en la respuesta de Telegram: {response.text}")
     except requests.exceptions.RequestException as e:
         print(f"❌ Error al enviar la petición a Telegram: {e}")
-    except Exception as e:
-        print(f"❌ Ocurrió un error inesperado al enviar el video: {e}")
 
 
 async def generate_all_videos():
-    """
-    Función principal que orquesta todo el proceso.
-    """
     if os.path.exists(OUTPUT_DIR):
         shutil.rmtree(OUTPUT_DIR)
     os.makedirs(OUTPUT_DIR)
 
-    if not shutil.which("ffmpeg"):
-        print(
-            "🚨 ALERTA: El comando 'ffmpeg' no fue encontrado. La conversión de video fallará."
-        )
-
     print("🖥️  Iniciando navegador Chromium...")
     browser = await launch(
         headless=True,
-        executablePath="/usr/bin/chromium",  # <-- ESTA ES LA LÍNEA CLAVE
+        executablePath="/usr/bin/chromium",
         args=["--no-sandbox", "--disable-setuid-sandbox"],
     )
     page = await browser.newPage()
+
+    # Navegamos una sola vez al principio
+    print(f"➡️  Navegando a {START_URL}")
+    await page.goto(START_URL, {"waitUntil": "networkidle0"})
+
+    # --- MEJORA: Obtenemos la imagen inicial para comparar los cambios ---
+    main_image_selector = 'img[name="imag"]'
+    await page.waitForSelector(main_image_selector)
+    last_image_src = await page.evaluate(
+        f'document.querySelector("{main_image_selector}").src'
+    )
 
     for map_info in MAPS_TO_PROCESS:
         map_id = map_info["id"]
@@ -132,14 +111,30 @@ async def generate_all_videos():
         print(f"\n--- 🗺️  Procesando mapa: {map_id} ---")
 
         try:
-            print(f"➡️  Navegando a {START_URL}")
-            await page.goto(START_URL, {"waitUntil": "networkidle0"})
-
             print(f"🖱️  Haciendo clic en el enlace del mapa '{map_id}'")
             map_link_selector = f"a[href*='{map_id}']"
             await page.waitForSelector(map_link_selector)
             await page.click(map_link_selector)
 
+            # --- MEJORA: ESPERA INTELIGENTE ---
+            # Esperamos a que el 'src' de la imagen principal cambie.
+            # Esta es la señal de que el nuevo mapa ha cargado.
+            print("⏳ Esperando a que el nuevo mapa cargue...")
+            wait_function = f"""(selector, last_src) => {{
+                const current_src = document.querySelector(selector).src;
+                return current_src !== last_src;
+            }}"""
+            await page.waitForFunction(
+                wait_function, {}, main_image_selector, last_image_src
+            )
+            print("✅ El nuevo mapa ha cargado.")
+
+            # Actualizamos la URL de la imagen para la próxima iteración
+            last_image_src = await page.evaluate(
+                f'document.querySelector("{main_image_selector}").src'
+            )
+
+            # Ahora que el mapa cargó, buscamos el botón de descarga
             print("⏳ Esperando el botón 'Download Loop'...")
             download_button_selector = 'input[value="Download Loop"]'
             await page.waitForSelector(download_button_selector)
@@ -170,6 +165,11 @@ async def generate_all_videos():
         except Exception as e:
             print(f"❌ Ocurrió un error procesando el mapa '{map_id}': {e}")
             print("Continuando con el siguiente mapa...")
+            # En caso de error, volvemos a la página principal para reiniciar el estado
+            await page.goto(START_URL, {"waitUntil": "networkidle0"})
+            last_image_src = await page.evaluate(
+                f'document.querySelector("{main_image_selector}").src'
+            )
             continue
 
     print("\n--- ✅ Proceso completado para todos los mapas ---")
