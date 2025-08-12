@@ -49,7 +49,6 @@ def download_gif(driver):
         print(f"Navegando a: {INITIAL_URL}")
 
         # --- PASO 2: Clic en 'HTML5 Loop' ---
-        # Esto navega en la misma ventana a la página del visor de imágenes.
         print("Buscando y haciendo clic en 'HTML5 Loop'...")
         WebDriverWait(driver, 20).until(
             EC.element_to_be_clickable((By.PARTIAL_LINK_TEXT, "HTML5 Loop"))
@@ -57,7 +56,6 @@ def download_gif(driver):
         print("Clic en 'HTML5 Loop' realizado. Ahora en la página del visor.")
 
         # --- PASO 3: Clic en 'Download Loop' ---
-        # Esto inicia la generación del GIF en la página actual. NO abre una nueva ventana.
         print("Buscando y haciendo clic en 'Download Loop'...")
         WebDriverWait(driver, 30).until(
             EC.element_to_be_clickable((By.ID, "downloadLoop"))
@@ -66,18 +64,24 @@ def download_gif(driver):
             "Clic en 'Download Loop' realizado. Esperando que el GIF aparezca en la página actual..."
         )
 
-        # --- PASO 4: Esperar a que el contenedor del GIF sea visible ---
-        # Esta es la parte clave. Esperamos a que el <div> con el GIF se haga visible en la página.
-        # Le damos un timeout largo (90 segundos) porque la generación del GIF puede ser lenta.
-        gif_wrapper = WebDriverWait(driver, 90).until(
-            EC.visibility_of_element_located((By.ID, "animatedGifWrapper"))
+        # --- PASO 4: ESPERAR POR LA IMAGEN CON LOS DATOS BASE64 ---
+        # Este es el ajuste final y definitivo. Esperamos por la imagen que
+        # ya tenga en su 'src' el texto 'data:image/gif;base64,'.
+        print(
+            "Esperando que la imagen del GIF con datos Base64 se cargue completamente..."
         )
-        print("Contenedor del GIF ('animatedGifWrapper') encontrado y visible.")
+        img_locator = (
+            By.XPATH,
+            "//div[@id='animatedGifWrapper']/img[starts-with(@src, 'data:image/gif;base64,')]",
+        )
 
-        # --- PASO 5: Extraer la imagen Base64 del contenedor ---
-        print("Localizando la etiqueta <img> y extrayendo los datos Base64...")
-        gif_element = gif_wrapper.find_element(By.TAG_NAME, "img")
+        gif_element = WebDriverWait(driver, 90).until(
+            EC.presence_of_element_located(img_locator)
+        )
+        print("¡Imagen GIF con Base64 encontrada y completamente cargada!")
 
+        # --- PASO 5: Extraer y guardar ---
+        # Ahora esta parte es 100% segura
         base64_src = gif_element.get_attribute("src")
         base64_data = base64_src.split(",", 1)[1]
 
