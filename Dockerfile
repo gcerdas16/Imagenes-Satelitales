@@ -1,4 +1,4 @@
-# Dockerfile
+# Dockerfile - Versión Correcta
 
 # 1. Usar una imagen base de Python oficial
 FROM python:3.10-slim
@@ -6,7 +6,7 @@ FROM python:3.10-slim
 # 2. Establecer el directorio de trabajo dentro del contenedor
 WORKDIR /app
 
-# 3. Instalar dependencias del sistema, incluyendo jq para leer JSON
+# 3. Instalar dependencias del sistema
 RUN apt-get update && apt-get install -y \
     wget \
     unzip \
@@ -15,8 +15,7 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# 4. Descargar, instalar y limpiar Chrome y Chromedriver de forma secuencial
-#    Asegurarse de que NO haya un punto y coma (;) al final de la primera línea.
+# 4. Descargar e instalar Chrome y Chromedriver
 RUN LATEST_VERSIONS_URL="https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json" \
     && BROWSER_DOWNLOAD_URL=$(wget -qO- ${LATEST_VERSIONS_URL} | jq -r '.channels.Stable.downloads.chrome[?(@.platform=="linux64")].url') \
     && DRIVER_DOWNLOAD_URL=$(wget -qO- ${LATEST_VERSIONS_URL} | jq -r '.channels.Stable.downloads.chromedriver[?(@.platform=="linux64")].url') \
@@ -33,12 +32,12 @@ RUN LATEST_VERSIONS_URL="https://googlechromelabs.github.io/chrome-for-testing/l
     && mv chromedriver-linux64/chromedriver /usr/bin/chromedriver \
     && rm chromedriver-linux64.zip && rm -rf chromedriver-linux64
 
-# 5. Copiar el archivo de requerimientos e instalar las dependencias de Python
+# 5. Copiar e instalar dependencias de Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 6. Copiar el resto del código de la aplicación al contenedor
+# 6. Copiar el resto del código
 COPY . .
 
-# 7. Comando para ejecutar la aplicación cuando el contenedor se inicie
+# 7. Comando para ejecutar la aplicación
 CMD ["python", "main.py"]
