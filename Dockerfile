@@ -1,7 +1,7 @@
-# Dockerfile - Versión Correcta
+# Dockerfile - Versión Plan B con imagen no-slim
 
-# 1. Usar una imagen base de Python oficial
-FROM python:3.10-slim
+# 1. Usar una imagen base de Python más robusta
+FROM python:3.10
 
 # 2. Establecer el directorio de trabajo dentro del contenedor
 WORKDIR /app
