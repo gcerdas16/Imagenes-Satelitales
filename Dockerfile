@@ -4,9 +4,10 @@ FROM python:3.11-slim
 # Establece el directorio de trabajo dentro del contenedor
 WORKDIR /app
 
-# Actualiza los paquetes e instala SOLAMENTE ffmpeg
+# Actualiza los paquetes e instala ffmpeg y chromium
 RUN apt-get update && apt-get install -y \
     ffmpeg \
+    chromium \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
